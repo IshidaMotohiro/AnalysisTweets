@@ -64,7 +64,7 @@ pic_url <- with_pictures %>% select(ext_media_url)  %>% unnest(cols = c(ext_medi
 pic_url <- with_pictures %>% 
   ## あるツィートに画像のurlが複数ある場合がある
   unnest(cols = ext_media_url) %>% 
-  ## もちろん、画像がないツィートもあるので削除
+  ## 画像がないツィートもあるので削除
   filter(!is.na(ext_media_url)) %>%  #
   # 投稿日時と Tweets、投稿者、そして URLのみを抽出
   select(created_at, screen_name, text, ext_media_url)
@@ -123,8 +123,8 @@ dim(tw_data)
 日付で投稿数を確認するのを目的とする。テキストそのものは使わない。日付列だけを残す。ただし、デフォルトだと世界標準時間(UTC)なので、日本標準時間(JST) に変換する。
 
 ```{r}
-as.Date(as.POSIXct("2020-05-01 8:00:00")) # 2020-04-30 23:00 へ変換されてから、時間情報が削除されている
-as.Date(as.POSIXct("2020-05-01 9:00:00")) # 2020-05-01 00:00 へ変換されてから、時間情報が削除されている
+as.Date(as.POSIXct("2020-05-01 8:00:00")) # 2020-04-30 23:00 へ変換してから時間情報を削除
+as.Date(as.POSIXct("2020-05-01 9:00:00")) # 2020-05-01 00:00 へ変換してから時間情報を削除されている
 
 # UTC に統一して変換
 td <- as.POSIXct("2020-05-01 8:00:00", tz = "UTC")
@@ -198,7 +198,7 @@ term_df <- seq(
   floor_date(now(), "day"), 
   by = "day"
 ) %>% 
-  # 指定した期間刻みのベクトルを作成
+  # 指定した期間のベクトルを作成
   as_date() %>% 
   tibble(terms = .)
 
@@ -223,7 +223,7 @@ tw_count2 %>% ggplot(aes(x = year_mon, y = day, fill = n)) +
     geom_tile() + 
   # ヒートマップ
     scale_fill_gradient(low = "white" , high = "#00A968") + 
-  # 塗りつぶしの濃淡
+  # 凡例の濃淡
     theme(axis.text.x = element_text(angle = 90, hjust = 1)) + # 軸目盛の傾き
     labs(title = paste0("@hirox246のツイート数"), 
          x = "year-mon", y = "day") 
@@ -236,7 +236,7 @@ tw_count2 %>% ggplot(aes(x = year_mon, y = day, fill = n)) +
 ネガポジ判定に有効でない語や文字を省く
 
 ```{r}
-# ツイートテキストの抽出と文字列処理
+# テキストの抽出と文字列処理
 tw_text <- tw_data  %>% select(text) %>% pull() %>%  
   # リプライの除去
   str_remove_all("^@.*?\\s") %>% 
@@ -331,111 +331,5 @@ day_df2 %>% ggplot(aes(x=Day, y = NP)) + geom_line()+
   # 折れ線グラフ
   scale_x_date(date_breaks = "2 weeks") + # x軸目盛(day)
   theme(axis.text.x = element_text(angle = 90)) # 
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-# 一時テキストファイルの保存先を指定
-tmp_folder <- "/home/ishida/tmp"
-# 分析結果の受け皿を初期化
-score_df <- data.frame()
-for(i in 1:nrow(text_df)) {
-  # 一時ファイルパスを作成
-  tmp_file_name <- paste("hirox246_", text_df[["terms"]][i], ".txt", sep = "")
-  tmp_path <- paste(tmp_folder, tmp_file_name, sep = "/")
-  # テキストファイルを書き出し
-  write(text_df[["texts"]][i], tmp_path)
-}
-
-  
-```
-
-
-
-
-
-
-```{r}
-# ネガポジ辞書の作成
-np_dic <- np_dic_original %>% 
-  select(TERM = V1, POS1 = V3, allocation = V4) %>% # 列の選択
-  distinct(TERM, .keep_all = TRUE) # 重複の除去
-head(np_dic)
-```
-
-
-```{r}
-# MeCabによる形態素解析
-library(RMeCab)
-mecab_df <- docDF(tmp_folder, type = 1, pos = c("動詞", "形容詞", "副詞", "助動詞"))
-```
-
-```{r}
-## MeCab の解析結果と、ネガポジ辞書を照合
-tmp_score_df <- mecab_df %>% 
-      left_join(np_dic, by = c("TERM", "POS1")) %>%
-  # 各単語に配点を付与
-      mutate(allocation = replace_na(allocation, 0))
-```
-
-
-```{r}
-tmp_score_df <- tmp_score_df %>% group_by(terms) %>% 
-  summarize() %>% 
-      # 日付の追加
-      mutate(allocation = replace_na(allocation, 0)) %>% 
-      # 配点がNAの場合0に
-      mutate(score = allocation * FREQ) %>% 
-      # (スコア) = (配点) * (語数)
-      mutate(
-        np_label = case_when(
-          score < 0 ~ "negative", # (スコア) < 0ならネガ
-          score > 0 ~ "positive", # (スコア) > 0ならポジ
-          score == 0 ~ "neutral"  # (スコア) = 0ならニュート
-        )
-      ) # ネガポジラベルを付与
-    
-# 全期間の結果を結合
-score_df <- rbind(score_df, tmp_score_df)
-```
-
-
-```{r}
-# 期間ごとにネガスコア・ポジスコアの合計
-result_df <- score_df %>% 
-  select(terms, np_label, score, FREQ) %>% 
-  group_by(terms, np_label) %>% 
-  summarise(score = sum(score), FREQ = sum(FREQ)) # スコアと頻度を合算
-
-```
-
-```{r}
-result_df
-```
-
-```{r}
-# ネガポジ推移
-ggplot(result_df, aes(x = terms, y = score)) + 
-  geom_bar(mapping = aes(fill = np_label, color = np_label), stat = "identity") + # 棒グラフ
-  scale_fill_manual(values = c("#00A968", "yellow", "orange")) + # 塗りつぶしの色
-  scale_color_manual(values = c("#00A968", "yellow", "orange")) + # 枠の色
-  geom_line(stat = "summary", fun = "sum", color = "blue") + # 折れ線グラフ
-  scale_x_date(date_breaks = "2 weeks") + # x軸目盛(day)
-  #scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") + # x軸目盛(mon)
-  theme(axis.text.x = element_text(angle = 90)) + # x軸目盛の傾き
-  labs(title = paste0("@hirox246のネガポジ推移"), 
-       x = "day") # ラベル
-
 ```
 
