@@ -304,32 +304,62 @@ dic %>% NROW()
 dic %>% filter(V1 == "大人")
 ```
 
-```{r}
-## 同じ単語が複数ある場合は平均値
-dic <- dic %>% arrange(V1) %>% group_by(V1) %>% summarise(SCORE = mean(V4)) %>% select(TERM = V1, SCORE)
-dic %>% head()
-```
 
-
+## 辞書の列名を変更
 
 ```{r}
-day_df <- day_df %>% left_join(dic)
+dic <- dic %>% rename(TERM = V1, POS1 = V3)
+```
+
+## ツィート形態素解析結果と辞書を結合
+```{r}
+# day_df <- day_df %>% left_join(dic)
+day_df <- day_df %>% left_join(dic, by = c("TERM", "POS1"))
 ```
 
 ```{r}
-day_df2 <- day_df %>% group_by(Day) %>% summarise(NP = sum(SCORE, na.rm = TRUE))
+day_df %>% head()
 ```
 
+## 単語の各スコアごとにカテゴリを設定（ポジティブ、ネガティブ、ニュートラルと分類）
+```{r}
+day_df2 <- day_df %>% mutate(FLAG_SCORE = case_when(
+  is.na(V4) ~ "neutral",
+  V4 < 0 ~ "negative",
+  V4 > 0 ~ "positive",
+  V4 == 0 ~ "neutral"))
 
+```
 
 ```{r}
 day_df2 %>% head()
 ```
 
+## 日付と、カテゴリごとに合算値を得る
+
 ```{r}
-day_df2 %>% ggplot(aes(x=Day, y = NP)) + geom_line()+ 
-  # 折れ線グラフ
-  scale_x_date(date_breaks = "2 weeks") + # x軸目盛(day)
-  theme(axis.text.x = element_text(angle = 90)) # 
+day_df3 <- day_df2 %>% group_by(Day, FLAG_SCORE) %>% summarise(NP = sum(V4, na.rm = TRUE))
 ```
+
+
+```{r}
+day_df3 %>% head()
+```
+
+
+## 可視化
+
+```{r}
+# ネガポジ推移
+day_df3 %>% ggplot(aes(x = Day, y = NP)) + 
+  geom_bar(mapping = aes(fill = FLAG_SCORE, color = FLAG_SCORE), stat = "identity") + # 棒グラフ
+  scale_fill_manual(values = c("#00A968", "yellow", "orange")) + # 塗りつぶしの色
+scale_color_manual(values = c("#00A968", "yellow", "orange")) + # 枠の色
+  geom_line(stat = "summary", fun = "sum", color = "blue", alpha=0.5) + # 折れ線グラフ
+  scale_x_date(date_breaks = "1 week") + # x軸目盛(day)
+  #scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") + # x軸目盛(mon)
+  theme(axis.text.x = element_text(angle = 90)) + # x軸目盛の傾き
+  labs(title = paste0("@hiroxのネガポジ推移（青は合算値）")) # ラベル
+```
+
 
