@@ -64,7 +64,7 @@ pic_url <- with_pictures %>% select(ext_media_url)  %>% unnest(cols = c(ext_medi
 pic_url <- with_pictures %>% 
   ## あるツィートに画像のurlが複数ある場合がある
   unnest(cols = ext_media_url) %>% 
-  ## 画像がないツィートもあるので削除
+  ## \画像がないツィートもあるので削除
   filter(!is.na(ext_media_url)) %>%  #
   # 投稿日時と Tweets、投稿者、そして URLのみを抽出
   select(created_at, screen_name, text, ext_media_url)
